@@ -3,7 +3,8 @@ import pandas as pd
 import numpy as np
 import datetime
 import pickle
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import warnings
 
 # Ignore scikit-learn version warnings for cleaner UI
@@ -91,7 +92,6 @@ else:
     future_df = pd.DataFrame({'Timestamp': future_timestamps})
     
     # Extract features required by the model (hour, month, day of week)
-    # Note: Pandas dayofweek is 0=Monday, 6=Sunday (aligns with your day=6 for Jan 1, 2023)
     future_df['hour'] = future_df['Timestamp'].dt.hour
     future_df['month'] = future_df['Timestamp'].dt.month
     future_df['day'] = future_df['Timestamp'].dt.dayofweek
@@ -129,37 +129,48 @@ else:
     
     st.markdown("---")
     
-    # --- Graphing ---
+    # --- Graphing (Matplotlib) ---
     st.subheader("Hourly Energy Consumption Graph")
     
-    fig = go.Figure()
+    # Create the figure and axis
+    fig, ax = plt.subplots(figsize=(10, 4))
     
-    # Add Historical Data Line
-    fig.add_trace(go.Scatter(
-        x=past_data["Timestamp"], 
-        y=past_data["ac"],
-        mode='lines+markers',
-        name='Historical (CSV Data)',
-        line=dict(color='royalblue', width=3)
-    ))
-    
-    # Add Predicted Data Line
-    fig.add_trace(go.Scatter(
-        x=future_df["Timestamp"], 
-        y=future_df["ac"],
-        mode='lines+markers',
-        name='Predicted (team18_model)',
-        line=dict(color='tomato', width=3, dash='dash')
-    ))
-    
-    fig.update_layout(
-        xaxis_title="Time",
-        yaxis_title="Kilowatts (kW)",
-        hovermode="x unified",
-        margin=dict(l=0, r=0, t=30, b=0)
+    # Plot Historical Data
+    ax.plot(
+        past_data["Timestamp"], 
+        past_data["ac"], 
+        marker='o', 
+        linestyle='-', 
+        color='royalblue', 
+        linewidth=2, 
+        label='Historical (CSV Data)'
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    # Plot Predicted Data
+    ax.plot(
+        future_df["Timestamp"], 
+        future_df["ac"], 
+        marker='o', 
+        linestyle='--', 
+        color='tomato', 
+        linewidth=2, 
+        label='Predicted (team18_model)'
+    )
+    
+    # Formatting the chart
+    ax.set_title("Historical vs Predicted AC Usage")
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Kilowatts (kW)")
+    ax.legend(loc="upper left")
+    ax.grid(True, linestyle=':', alpha=0.7)
+    
+    # Format x-axis dates to look clean
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    
+    # Render in Streamlit
+    st.pyplot(fig)
     
     # --- AI Advice Module ---
     st.subheader("💡 Smart Advice")
