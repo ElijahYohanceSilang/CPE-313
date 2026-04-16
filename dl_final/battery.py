@@ -44,7 +44,7 @@ def main():
     st.write("This app uses a sliding window (steps 1-49) to predict the 50th step's State of Health (SOH).")
 
     # Load Model
-    model_path = 'model_1_base_LSTM.keras'
+    model_path = 'dl_final/model_1_base_LSTM.keras'
     model = load_keras_model(model_path)
     
     if model is None:
