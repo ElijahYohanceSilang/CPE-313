@@ -85,7 +85,7 @@ else:
 
     current_kw = past_data.iloc[-1]['ac'] if not past_data.empty else 0.0
 
-    # --- 2. Generate Future Predictions ---
+# --- 2. Generate Future Predictions ---
     future_timestamps = [current_simulated_time + datetime.timedelta(hours=i+1) for i in range(prediction_hours)]
     future_df = pd.DataFrame({'Timestamp': future_timestamps})
     
@@ -95,26 +95,26 @@ else:
     
     predicted_ac = []
     
-if model is not None:
+    if model is not None:
         try:
-            # Create our base features
+            # Prepare features
             X_predict = future_df[['hour', 'month', 'day']]
             
-            # MAGICAL FIX: Ask the model what order it expects the columns to be in
+            # Auto-align columns if model has saved feature names
             if hasattr(model, "feature_names_in_"):
-                expected_cols = list(model.feature_names_in_)
-                # Reorder our dataframe to match the model's memory exactly
-                X_predict = future_df[expected_cols]
+                X_predict = future_df[list(model.feature_names_in_)]
                 
             raw_predictions = model.predict(X_predict)
             
+            # Apply AC Mode multiplier
             mode_multiplier = 1.6 if ac_mode == "Chilling" else 1.0
             predicted_ac = [max(0.01, p * mode_multiplier) for p in raw_predictions]
             
         except Exception as e:
-            st.error(f"Model feature mismatch. Expected columns like ['hour', 'month', 'day']. Error: {e}")
+            st.error(f"Prediction Error: {e}")
             predicted_ac = [0.0] * prediction_hours
     else:
+        # This handles the case where the model failed to load
         predicted_ac = [0.0] * prediction_hours
 
     future_df['ac'] = predicted_ac
