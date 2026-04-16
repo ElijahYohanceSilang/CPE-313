@@ -29,7 +29,7 @@ def main():
     st.subheader("Recent Predictions")
     
     FEATURE_COLUMNS = [
-        'mode', 'voltage_charger', 'temperature_battery', 
+        'voltage_charger', 'temperature_battery', 
         'voltage_load', 'current_load', 'temperature_mosfet', 
         'temperature_resistor', 'mission_type'
     ]
