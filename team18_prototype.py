@@ -12,8 +12,8 @@ st.title("⚡ Smart AC Energy Monitor & Forecaster")
 # 2. Load Model and Data
 @st.cache_resource
 def load_assets():
-    model = joblib.load('your_model.pkl') 
-    df = pd.read_csv('your_dataset.csv')
+    model = joblib.load('team18_model.pkl') 
+    df = pd.read_csv('20k_energy.csv')
     df['date'] = pd.to_datetime(df['date'])
     return model, df
 
