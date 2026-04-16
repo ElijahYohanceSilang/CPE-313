@@ -18,7 +18,7 @@ st.set_page_config(page_title="AC Smart Monitor", layout="wide")
 def load_ml_model():
     """Loads the pre-trained machine learning model."""
     try:
-        with open("team18_model.pkl", "rb") as file:
+        with open("Team18/team18_model.pkl", "rb") as file:
             model = pickle.load(file)
         return model
     except FileNotFoundError:
@@ -32,7 +32,7 @@ def load_ml_model():
 def load_historical_data():
     """Loads and formats the CSV dataset."""
     try:
-        df = pd.read_csv("20k_energy.csv")
+        df = pd.read_csv("Team18/20k_energy.csv")
         # Combine date and time into a single Timestamp column for graphing
         df['Timestamp'] = pd.to_datetime(df['date'] + ' ' + df['time'])
         # Sort by time just in case the CSV is out of order
