@@ -95,9 +95,17 @@ else:
     
     predicted_ac = []
     
-    if model is not None:
+if model is not None:
         try:
+            # Create our base features
             X_predict = future_df[['hour', 'month', 'day']]
+            
+            # MAGICAL FIX: Ask the model what order it expects the columns to be in
+            if hasattr(model, "feature_names_in_"):
+                expected_cols = list(model.feature_names_in_)
+                # Reorder our dataframe to match the model's memory exactly
+                X_predict = future_df[expected_cols]
+                
             raw_predictions = model.predict(X_predict)
             
             mode_multiplier = 1.6 if ac_mode == "Chilling" else 1.0
