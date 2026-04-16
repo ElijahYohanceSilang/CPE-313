@@ -1,87 +1,184 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import time
-import joblib
-from datetime import datetime, timedelta
+import datetime
+import pickle
+import plotly.graph_objects as go
+import warnings
 
-# --- 1. SETUP ---
-st.set_page_config(page_title="AI Energy Advisor", layout="wide")
-st.title("🌬️ Smart AC Energy Advisor")
+# Ignore scikit-learn version warnings for cleaner UI
+warnings.filterwarnings("ignore", category=UserWarning)
+
+st.set_page_config(page_title="AC Smart Monitor", layout="wide")
+
+# --- DATA & MODEL LOADING ---
 
 @st.cache_resource
-def load_assets():
-    model = joblib.load('team18_model.pkl') 
-    data = pd.read_csv('20k_energy.csv')
-    data['date'] = pd.to_datetime(data['date'])
-    return model, data
+def load_ml_model():
+    """Loads the pre-trained machine learning model."""
+    try:
+        with open("team18_model.pkl", "rb") as file:
+            model = pickle.load(file)
+        return model
+    except FileNotFoundError:
+        st.error("Model file 'team18_model.pkl' not found. Please ensure it is in the same directory.")
+        return None
+    except Exception as e:
+        st.error(f"Error loading model: {e}")
+        return None
 
-model, data = load_assets()
+@st.cache_data
+def load_historical_data():
+    """Loads and formats the CSV dataset."""
+    try:
+        df = pd.read_csv("20k_energy.csv")
+        # Combine date and time into a single Timestamp column for graphing
+        df['Timestamp'] = pd.to_datetime(df['date'] + ' ' + df['time'])
+        # Sort by time just in case the CSV is out of order
+        df = df.sort_values(by='Timestamp').reset_index(drop=True)
+        return df
+    except FileNotFoundError:
+        st.error("Dataset '20k_energy.csv' not found. Please ensure it is in the same directory.")
+        return pd.DataFrame()
 
-# --- 2. SIDEBAR & SETTINGS ---
-st.sidebar.header("🗓️ Simulation Settings")
-selected_date = st.sidebar.date_input("Select Date", datetime(2023, 4, 15))
-forecast_hours = st.sidebar.slider("Forecast Window (Hours)", 1, 12, 8)
-run_sim = st.sidebar.button("Enable Air Conditioner")
+model = load_ml_model()
+df_source = load_historical_data()
 
-# --- 3. THE "ADVISOR" LOGIC ---
-# We calculate the prediction for the selected window immediately
-start_time_data = data[data['date'] == pd.to_datetime(selected_date)].iloc[0:forecast_hours]
 
-if not start_time_data.empty:
-    # Feature preparation for the window
-    window_features = start_time_data[['hour', 'month', 'day']]
+# --- STREAMLIT UI ---
 
-    predicted_values = model.predict(window_features)
-    total_forecasted_kwh = round(np.sum(predicted_values), 2)
-    
-    # Advisor UI
-    month_name = selected_date.strftime("%B")
-    st.info(f"### 💡 Energy Advisor Recommendation")
-    st.write(f"Based on historical usage for **{month_name}**, if you turn on the AC now:")
-    st.metric("Estimated Consumption (Next {0} hrs)".format(forecast_hours), f"{total_forecasted_kwh} kWh")
-    
-    if month_name in ['April', 'May', 'June']:
-        st.warning("⚠️ High usage expected due to summer heat. Consider setting the AC to 25°C to save energy.")
-    else:
-        st.success("❄️ Lower usage expected. The outdoor temperature is favorable today.")
+st.title("❄️ Smart AC Energy Monitor & Predictor")
+st.markdown("Monitoring historical data from `20k_energy.csv` and predicting future consumption using `team18_model.pkl`.")
 
-# --- 4. REAL-TIME MONITORING GRAPH ---
-st.divider()
-col1, col2 = st.columns([2, 1])
+# Sidebar Controls
+st.sidebar.header("AC Controls & Settings")
+ac_enabled = st.sidebar.toggle("Power (AC Enabled)", value=True)
 
-with col1:
-    st.subheader("📊 Live Power Consumption Monitor")
-    chart_placeholder = st.empty()
+# We use a time input to simulate a "live" environment from the historical data
+target_date = st.sidebar.date_input("Select Date", datetime.date(2023, 1, 1))
+target_time = st.sidebar.time_input("Select Current Time", datetime.time(12, 0))
+ac_mode = st.sidebar.selectbox("AC Mode", ["Normal", "Chilling"])
 
-with col2:
-    st.subheader("📋 Status Log")
-    status_placeholder = st.empty()
+st.sidebar.markdown("---")
+st.sidebar.header("Prediction Settings")
+prediction_hours = st.sidebar.slider("Prediction Horizon (Hours)", min_value=1, max_value=12, value=4)
+kwh_price = st.sidebar.number_input("Electricity Price per kWh ($)", min_value=0.01, value=0.15, step=0.01)
 
-# --- 5. RUN SIMULATION ---
-if run_sim:
-    history = []
-    
-    for i in range(len(start_time_data)):
-        current_row = start_time_data.iloc[i]
-        
-        # 1. Update History
-        history.append({
-            "Hour": f"{current_row['hour']}:00",
-            "Actual Consumption (kWh)": current_row['ac'],
-            "Predicted": predicted_values[i]
-        })
-        
-        # 2. Update Graph
-        chart_df = pd.DataFrame(history).set_index("Hour")
-        chart_placeholder.area_chart(chart_df)
-        
-        # 3. Update Status
-        status_placeholder.write(f"**Current Hour:** {current_row['hour']}:00")
-        status_placeholder.write(f"**Hardware Feed:** {current_row['ac']} kWh")
-        
-        time.sleep(0.5) # Speed up for demo
-    
-    st.success("Simulation Complete for the selected window.")
+# Main Dashboard
+if not ac_enabled:
+    st.warning("The Air Conditioner is currently turned OFF. Turn it on in the sidebar to view metrics and predictions.")
+elif df_source.empty:
+    st.warning("Awaiting dataset to render dashboard.")
 else:
-    st.write("Click **Enable Air Conditioner** to see the real-time power draw.")
+    # --- 1. Process Historical Data ---
+    # Combine user date/time selection into a single timestamp
+    current_simulated_time = datetime.datetime.combine(target_date, target_time)
+    
+    # Filter the dataset to get the 12 hours leading up to the selected time
+    mask = df_source['Timestamp'] <= current_simulated_time
+    past_data = df_source[mask].tail(12).copy()
+    
+    # If the user picks a date not in the CSV, just show the last 12 hours of the whole dataset
+    if past_data.empty:
+        past_data = df_source.tail(12).copy()
+        current_simulated_time = past_data.iloc[-1]['Timestamp']
+        st.info(f"Selected date not in dataset. Defaulting to latest available data: {current_simulated_time}")
+
+    current_kw = past_data.iloc[-1]['ac'] if not past_data.empty else 0.0
+
+    # --- 2. Generate Future Predictions ---
+    future_timestamps = [current_simulated_time + datetime.timedelta(hours=i+1) for i in range(prediction_hours)]
+    future_df = pd.DataFrame({'Timestamp': future_timestamps})
+    
+    # Extract features required by the model (hour, month, day of week)
+    # Note: Pandas dayofweek is 0=Monday, 6=Sunday (aligns with your day=6 for Jan 1, 2023)
+    future_df['hour'] = future_df['Timestamp'].dt.hour
+    future_df['month'] = future_df['Timestamp'].dt.month
+    future_df['day'] = future_df['Timestamp'].dt.dayofweek
+    
+    predicted_ac = []
+    
+    # Attempt to predict using the .pkl model
+    if model is not None:
+        try:
+            # We pass the exact columns the model was likely trained on
+            X_predict = future_df[['hour', 'month', 'day']]
+            raw_predictions = model.predict(X_predict)
+            
+            # Apply AC Mode multiplier (Chilling consumes more power)
+            mode_multiplier = 1.6 if ac_mode == "Chilling" else 1.0
+            predicted_ac = [max(0.01, p * mode_multiplier) for p in raw_predictions]
+            
+        except Exception as e:
+            st.error(f"Model feature mismatch. Expected columns like ['hour', 'month', 'day']. Error: {e}")
+            predicted_ac = [0.0] * prediction_hours
+    else:
+        predicted_ac = [0.0] * prediction_hours
+
+    future_df['ac'] = predicted_ac
+    
+    # Calculate Metrics
+    predicted_total_kwh = sum(predicted_ac)
+    predicted_cost = predicted_total_kwh * kwh_price
+    
+    # --- Top Metrics Row ---
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Current Output", f"{current_kw:.2f} kW", f"{ac_mode} Mode")
+    col2.metric(f"Predicted Usage ({prediction_hours}h)", f"{predicted_total_kwh:.2f} kWh")
+    col3.metric(f"Estimated Cost ({prediction_hours}h)", f"${predicted_cost:.2f}", f"@ ${kwh_price}/kWh")
+    
+    st.markdown("---")
+    
+    # --- Graphing ---
+    st.subheader("Hourly Energy Consumption Graph")
+    
+    fig = go.Figure()
+    
+    # Add Historical Data Line
+    fig.add_trace(go.Scatter(
+        x=past_data["Timestamp"], 
+        y=past_data["ac"],
+        mode='lines+markers',
+        name='Historical (CSV Data)',
+        line=dict(color='royalblue', width=3)
+    ))
+    
+    # Add Predicted Data Line
+    fig.add_trace(go.Scatter(
+        x=future_df["Timestamp"], 
+        y=future_df["ac"],
+        mode='lines+markers',
+        name='Predicted (team18_model)',
+        line=dict(color='tomato', width=3, dash='dash')
+    ))
+    
+    fig.update_layout(
+        xaxis_title="Time",
+        yaxis_title="Kilowatts (kW)",
+        hovermode="x unified",
+        margin=dict(l=0, r=0, t=30, b=0)
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # --- AI Advice Module ---
+    st.subheader("💡 Smart Advice")
+    
+    # Determine season from current month for context
+    current_month = current_simulated_time.month
+    season_text = "summer" if current_month in [5, 6, 7, 8] else "winter" if current_month in [12, 1, 2] else "mild"
+    
+    advice_msg = f"**Analysis:** Based on the current date, you are operating in a **{season_text}** pattern. "
+    
+    if ac_mode == "Chilling":
+        # Calculate what the total would have been without the 1.6x multiplier
+        normal_kwh = predicted_total_kwh / 1.6 
+        savings = (predicted_total_kwh - normal_kwh) * kwh_price 
+        
+        advice_msg += f"Because you have the AC set to **Chilling**, your predicted power consumption is significantly higher. "
+        advice_msg += f"\n\n**Recommendation:** If you switch back to **Normal** mode, you could save approximately **${savings:.2f}** over the next {prediction_hours} hours."
+        st.warning(advice_msg)
+    else:
+        advice_msg += "You are currently running on **Normal** mode, which is optimal for energy savings. "
+        advice_msg += f"Your projected cost of **${predicted_cost:.2f}** for the next {prediction_hours} hours aligns with standard predictive limits."
+        st.success(advice_msg)
