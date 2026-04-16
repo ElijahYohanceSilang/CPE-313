@@ -11,11 +11,10 @@ st.title("🌬️ Smart AC Energy Advisor")
 
 @st.cache_resource
 def load_assets():
-    # model = joblib.load('your_model.pkl') 
-    # For now, using a mock model placeholder logic
-    data = pd.read_csv('your_dataset.csv')
+    model = joblib.load('team18_model.pkl') 
+    data = pd.read_csv('20k_energy.csv')
     data['date'] = pd.to_datetime(data['date'])
-    return None, data # Replace None with model
+    return model, data
 
 model, data = load_assets()
 
@@ -31,11 +30,9 @@ start_time_data = data[data['date'] == pd.to_datetime(selected_date)].iloc[0:for
 
 if not start_time_data.empty:
     # Feature preparation for the window
-    # Assuming features are [hour, month, day]
     window_features = start_time_data[['hour', 'month', 'day']]
-    
-    # Mocking prediction logic (Replace with: model.predict(window_features))
-    predicted_values = start_time_data['ac'].values * 1.05 # Mocked for demonstration
+
+    predicted_values = model.predict(window_features)
     total_forecasted_kwh = round(np.sum(predicted_values), 2)
     
     # Advisor UI
