@@ -12,8 +12,9 @@ st.title("⚡ Smart AC Energy Monitor & Forecaster")
 # 2. Load Model and Data
 @st.cache_resource
 def load_assets():
-    model = joblib.load('team18_model.pkl') 
-    df = pd.read_csv('20k_energy.csv')
+    # Replace 'model.pkl' with your actual filename
+    model = joblib.load('your_model.pkl') 
+    df = pd.read_csv('your_dataset.csv')
     df['date'] = pd.to_datetime(df['date'])
     return model, df
 
@@ -67,6 +68,7 @@ if st.session_state.running:
                       delta=f"{round(prediction - actual_cons, 3)} vs Actual")
 
         # Visualizing the "Real-time" flow
+        # In a real app, you'd append this to a list to show the graph growing
         st.write(f"Timestamp: {current_row['time']} | Predicting next hour...")
         
         # Artificial delay to simulate real-time (1 second = 1 hour)
