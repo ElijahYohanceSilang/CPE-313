@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import datetime
-import pickle
+import joblib
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import warnings
@@ -19,7 +19,7 @@ def load_ml_model():
     """Loads the pre-trained machine learning model."""
     try:
         with open("Team18/team18_model.pkl", "rb") as file:
-            model = pickle.load(file)
+            model = joblib.load(file)
         return model
     except FileNotFoundError:
         st.error("Model file 'team18_model.pkl' not found. Please ensure it is in the same directory.")
