@@ -20,7 +20,7 @@ model, data = load_assets()
 
 # --- 2. SIDEBAR & SETTINGS ---
 st.sidebar.header("🗓️ Simulation Settings")
-selected_date = st.sidebar.date_input("Select Date", datetime(2023, 4, 15)) # Default to a hot month
+selected_date = st.sidebar.date_input("Select Date", datetime(2023, 4, 15))
 forecast_hours = st.sidebar.slider("Forecast Window (Hours)", 1, 12, 8)
 run_sim = st.sidebar.button("Enable Air Conditioner")
 
@@ -42,7 +42,7 @@ if not start_time_data.empty:
     st.metric("Estimated Consumption (Next {0} hrs)".format(forecast_hours), f"{total_forecasted_kwh} kWh")
     
     if month_name in ['April', 'May', 'June']:
-        st.warning("⚠️ High usage expected due to summer heat in April. Consider setting the AC to 25°C to save energy.")
+        st.warning("⚠️ High usage expected due to summer heat. Consider setting the AC to 25°C to save energy.")
     else:
         st.success("❄️ Lower usage expected. The outdoor temperature is favorable today.")
 
