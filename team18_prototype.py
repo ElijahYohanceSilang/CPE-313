@@ -5,73 +5,86 @@ import time
 import joblib
 from datetime import datetime, timedelta
 
-# 1. Setup and Page Config
-st.set_page_config(page_title="AC Power Predictor", layout="wide")
-st.title("⚡ Smart AC Energy Monitor & Forecaster")
+# --- 1. SETUP ---
+st.set_page_config(page_title="AI Energy Advisor", layout="wide")
+st.title("🌬️ Smart AC Energy Advisor")
 
-# 2. Load Model and Data
 @st.cache_resource
 def load_assets():
-    # Replace 'model.pkl' with your actual filename
-    model = joblib.load('your_model.pkl') 
-    df = pd.read_csv('your_dataset.csv')
-    df['date'] = pd.to_datetime(df['date'])
-    return model, df
+    # model = joblib.load('your_model.pkl') 
+    # For now, using a mock model placeholder logic
+    data = pd.read_csv('your_dataset.csv')
+    data['date'] = pd.to_datetime(data['date'])
+    return None, data # Replace None with model
 
 model, data = load_assets()
 
-# 3. Sidebar Controls
-st.sidebar.header("Simulation Settings")
-selected_date = st.sidebar.date_input("Select Simulation Start Date", datetime(2023, 1, 1))
-prediction_window = st.sidebar.slider("Forecast Window (Hours)", 1, 24, 6)
-simulate_btn = st.sidebar.button("Toggle AC Power")
+# --- 2. SIDEBAR & SETTINGS ---
+st.sidebar.header("🗓️ Simulation Settings")
+selected_date = st.sidebar.date_input("Select Date", datetime(2023, 4, 15)) # Default to a hot month
+forecast_hours = st.sidebar.slider("Forecast Window (Hours)", 1, 12, 8)
+run_sim = st.sidebar.button("Enable Air Conditioner")
 
-# Initialize Session State
-if "running" not in st.session_state:
-    st.session_state.running = False
+# --- 3. THE "ADVISOR" LOGIC ---
+# We calculate the prediction for the selected window immediately
+start_time_data = data[data['date'] == pd.to_datetime(selected_date)].iloc[0:forecast_hours]
 
-if simulate_btn:
-    st.session_state.running = not st.session_state.running
-
-# 4. Simulation Logic
-if st.session_state.running:
-    st.success(f"AC is currently RUNNING. Simulating from {selected_date}")
+if not start_time_data.empty:
+    # Feature preparation for the window
+    # Assuming features are [hour, month, day]
+    window_features = start_time_data[['hour', 'month', 'day']]
     
-    # Placeholder for the dynamic chart
+    # Mocking prediction logic (Replace with: model.predict(window_features))
+    predicted_values = start_time_data['ac'].values * 1.05 # Mocked for demonstration
+    total_forecasted_kwh = round(np.sum(predicted_values), 2)
+    
+    # Advisor UI
+    month_name = selected_date.strftime("%B")
+    st.info(f"### 💡 Energy Advisor Recommendation")
+    st.write(f"Based on historical usage for **{month_name}**, if you turn on the AC now:")
+    st.metric("Estimated Consumption (Next {0} hrs)".format(forecast_hours), f"{total_forecasted_kwh} kWh")
+    
+    if month_name in ['April', 'May', 'June']:
+        st.warning("⚠️ High usage expected due to summer heat in April. Consider setting the AC to 25°C to save energy.")
+    else:
+        st.success("❄️ Lower usage expected. The outdoor temperature is favorable today.")
+
+# --- 4. REAL-TIME MONITORING GRAPH ---
+st.divider()
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.subheader("📊 Live Power Consumption Monitor")
     chart_placeholder = st.empty()
-    metric_placeholder = st.columns(2)
+
+with col2:
+    st.subheader("📋 Status Log")
+    status_placeholder = st.empty()
+
+# --- 5. RUN SIMULATION ---
+if run_sim:
+    history = []
     
-    # Filter data based on selected date
-    sim_data = data[data['date'] >= pd.to_datetime(selected_date)].reset_index(drop=True)
-
-    # Simulation Loop
-    for i in range(len(sim_data)):
-        if not st.session_state.running:
-            break
-            
-        # Get "Current" state
-        current_row = sim_data.iloc[i]
-        actual_cons = current_row['ac']
+    for i in range(len(start_time_data)):
+        current_row = start_time_data.iloc[i]
         
-        # Prepare Features for Prediction (matching your schema)
-        # Assuming features are: hour, month, day_of_week
-        features = np.array([[current_row['hour'], current_row['month'], current_row['day']]])
+        # 1. Update History
+        history.append({
+            "Hour": f"{current_row['hour']}:00",
+            "Actual Consumption (kWh)": current_row['ac'],
+            "Predicted": predicted_values[i]
+        })
         
-        # Make Prediction for the 'next' hour or a window
-        prediction = model.predict(features)[0]
-
-        # UI Updates
-        with metric_placeholder[0]:
-            st.metric("Current Consumption", f"{actual_cons} kWh")
-        with metric_placeholder[1]:
-            st.metric("Model Predicted", f"{round(prediction, 3)} kWh", 
-                      delta=f"{round(prediction - actual_cons, 3)} vs Actual")
-
-        # Visualizing the "Real-time" flow
-        # In a real app, you'd append this to a list to show the graph growing
-        st.write(f"Timestamp: {current_row['time']} | Predicting next hour...")
+        # 2. Update Graph
+        chart_df = pd.DataFrame(history).set_index("Hour")
+        chart_placeholder.area_chart(chart_df)
         
-        # Artificial delay to simulate real-time (1 second = 1 hour)
-        time.sleep(1) 
+        # 3. Update Status
+        status_placeholder.write(f"**Current Hour:** {current_row['hour']}:00")
+        status_placeholder.write(f"**Hardware Feed:** {current_row['ac']} kWh")
+        
+        time.sleep(0.5) # Speed up for demo
+    
+    st.success("Simulation Complete for the selected window.")
 else:
-    st.warning("AC is currently OFF. Click 'Toggle AC Power' to start simulation.")
+    st.write("Click **Enable Air Conditioner** to see the real-time power draw.")
