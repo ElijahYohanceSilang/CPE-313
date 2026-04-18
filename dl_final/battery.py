@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 from sklearn.metrics import mean_absolute_error
 import plotly.graph_objects as go
+import datetime
 
 # --- LOAD DATA & MODEL ---
 @st.cache_data
@@ -17,14 +18,20 @@ def load_model():
     return tf.keras.models.load_model("dl_final/model_1_base_LSTM.keras")
 
 # --- PLOTTING & PREDICTION FUNCTION ---
-def plot_battery_soh(df, model, selected_battery, battery_col):
-    # 1. Filter data for the selected battery
+def plot_battery_soh(df, model, selected_battery, battery_col, date_col, selected_date):
+    # 1. Filter data for the selected battery and date
     battery_df = df[df[battery_col] == selected_battery].copy()
+    
+    # Filter by selected date
+    battery_df = battery_df[battery_df[date_col].dt.date == selected_date]
+    
+    # Sort chronologically just in case
+    battery_df = battery_df.sort_values(by=date_col)
 
-    # 2. Validate we have enough data to create a window
-    window_size = 49 # Steps 1-49
+    window_size = 50 # 50 windows = 50 seconds
+    
     if len(battery_df) <= window_size:
-        st.warning(f"Not enough data to create a window of 50 for battery '{selected_battery}'.")
+        st.warning(f"Not enough data on {selected_date} to create a 50-second window.")
         return
 
     FEATURE_COLUMNS = [
@@ -33,53 +40,68 @@ def plot_battery_soh(df, model, selected_battery, battery_col):
         'temperature_resistor', 'mission_type'
     ]
     
-    # 3. Grab recent data for this specific battery (last 100 rows to keep it fast)
-    recent_data = battery_df.tail(100)
+    X, y_true, plot_times = [], [], []
     
-    # 4. Prepare sequences
-    features = recent_data[FEATURE_COLUMNS].values
-    target = recent_data['SOH_percent'].values
-    
-    X, y_true = [], []
-    
-    for i in range(len(features) - window_size):
-        X.append(features[i:i+window_size])
-        y_true.append(target[i+window_size])
-        
+    # 2. Group by Hour to get Hourly SOH predictions
+    # We will extract a contiguous 50-second window for each hour
+    for hour, group in battery_df.groupby(battery_df[date_col].dt.hour):
+        if len(group) >= window_size:
+            # Take the first 50 rows (50 seconds) of this hour to form the window
+            window_df = group.iloc[:window_size]
+            features = window_df[FEATURE_COLUMNS].values
+            
+            # Target SOH at the end of this 50-second window
+            target = window_df['SOH_percent'].iloc[-1] 
+            
+            # Timestamp for the plot (using the end of the window)
+            window_time = window_df[date_col].iloc[-1]
+            
+            X.append(features)
+            y_true.append(target)
+            plot_times.append(window_time)
+            
+    if len(X) == 0:
+        st.warning(f"Could not find any full 50-second continuous blocks of data on {selected_date}.")
+        return
+
     X = np.array(X)
     y_true = np.array(y_true)
     
-    # 5. Predict
+    # 3. Predict SOH for these hourly windows
     y_pred = model.predict(X).flatten()
     
-    # 6. Metrics & UI Display
+    # 4. Metrics & UI Display
     mae = mean_absolute_error(y_true, y_pred)
-    st.write(f"### SOH Forecast Accuracy Test")
+    st.write("### SOH Forecast Accuracy Test (Hourly Aggregation)")
     st.write(f"**Average Error (MAE):** {mae:.4f}")
     
-    # 7. Plotting (Using Plotly to mirror your original style but with the requested UI flow)
+    # 5. Plotting
     fig = go.Figure()
     
-    steps = np.arange(1, len(y_true) + 1)
+    fig.add_trace(go.Scatter(
+        x=plot_times, y=y_true, mode='lines+markers', 
+        name="Actual SOH", line=dict(color='royalblue', width=2)
+    ))
     
-    fig.add_trace(go.Scatter(x=steps, y=y_true, mode='lines+markers', 
-                             name="Actual SOH", line=dict(color='royalblue', width=2)))
+    fig.add_trace(go.Scatter(
+        x=plot_times, y=y_pred, mode='lines+markers', 
+        name="Predicted SOH", line=dict(color='darkorange', width=2, dash='dash')
+    ))
     
-    fig.add_trace(go.Scatter(x=steps, y=y_pred, mode='lines+markers', 
-                             name="Predicted SOH", line=dict(color='darkorange', width=2, dash='dash')))
-    
-    # Add a background shaded region to mimic the "Prediction Test Zone" from your example
-    fig.add_vrect(
-        x0=steps[0], x1=steps[-1],
-        fillcolor="orange", opacity=0.1,
-        layer="below", line_width=0,
-    )
+    # Add background shade
+    if len(plot_times) > 1:
+        fig.add_vrect(
+            x0=plot_times[0], x1=plot_times[-1],
+            fillcolor="orange", opacity=0.1,
+            layer="below", line_width=0,
+        )
     
     fig.update_layout(
-        title=f"SOH Time Series Prediction - Battery {selected_battery}",
-        xaxis_title="Prediction Step",
+        title=f"Hourly SOH Prediction - Battery {selected_battery} on {selected_date}",
+        xaxis_title="Time of Day",
         yaxis_title="SOH Percent",
-        hovermode="x unified"
+        hovermode="x unified",
+        xaxis=dict(tickformat="%H:%M") # Format x-axis nicely for hours
     )
     
     st.plotly_chart(fig, use_container_width=True)
@@ -97,22 +119,42 @@ def main():
         st.error(f"Error loading data or model: {e}")
         return
         
-    # --- CONFIGURE THIS ---
-    # Change 'battery_id' to the actual name of your column that identifies batteries
-    battery_col = 'battery_id' 
+    # --- CONFIGURE COLUMNS ---
+    battery_col = 'battery_id' # Update if your column is named differently
+    date_col = 'timestamp'     # Update if your timestamp column is named differently
     
-    if battery_col not in df.columns:
-        st.error(f"Column '{battery_col}' not found. Please update `battery_col` in the script to match your dataframe's column for battery names/IDs.")
+    missing_cols = [col for col in [battery_col, date_col] if col not in df.columns]
+    if missing_cols:
+        st.error(f"Missing columns: {missing_cols}. Please update `battery_col` or `date_col` in the script.")
         st.write("Available columns are:", df.columns.tolist())
         return
 
-    # UI Inputs
-    available_batteries = df[battery_col].unique()
-    selected_battery = st.selectbox("Select a Battery", available_batteries)
+    # Ensure date column is proper datetime
+    if not pd.api.types.is_datetime64_any_dtype(df[date_col]):
+        df[date_col] = pd.to_datetime(df[date_col])
+
+    # UI Inputs - Row 1
+    col1, col2 = st.columns(2)
     
-    if st.button("Run Forecast"):
-        with st.spinner('Calculating predictions...'):
-            plot_battery_soh(df, model, selected_battery, battery_col)
+    with col1:
+        available_batteries = df[battery_col].unique()
+        selected_battery = st.selectbox("Select a Battery", available_batteries)
+    
+    # Filter for dates specific to the chosen battery
+    battery_dates = df[df[battery_col] == selected_battery][date_col].dt.date
+    min_date, max_date = battery_dates.min(), battery_dates.max()
+    
+    with col2:
+        selected_date = st.date_input(
+            "Select a Date", 
+            value=min_date, 
+            min_value=min_date, 
+            max_value=max_date
+        )
+    
+    if st.button("Run Hourly Forecast"):
+        with st.spinner(f'Calculating predictions for {selected_date}...'):
+            plot_battery_soh(df, model, selected_battery, battery_col, date_col, selected_date)
 
 if __name__ == "__main__":
     main()
