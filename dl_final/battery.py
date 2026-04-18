@@ -9,8 +9,16 @@ import datetime
 # --- LOAD DATA & MODEL ---
 @st.cache_data
 def load_data():
-    # pandas handles decompression automatically
-    df = pd.read_pickle("dl_final/dataset.pkl.zip")
+    try:
+        # Attempt 1: Standard read (pandas auto-detects compression from extension)
+        df = pd.read_pickle("dl_final/dataset.pkl.zip")
+    except Exception:
+        try:
+            # Attempt 2: Force 'zip' decompression explicitly
+            df = pd.read_pickle("dl_final/dataset.pkl.zip", compression='zip')
+        except Exception:
+            # Attempt 3: If it's actually just a pickle file renamed, read without compression
+            df = pd.read_pickle("dl_final/dataset.pkl.zip", compression=None)
     return df
 
 @st.cache_resource
