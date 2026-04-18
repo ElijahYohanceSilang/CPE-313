@@ -18,15 +18,15 @@ def load_model():
     return tf.keras.models.load_model("dl_final/model_1_base_LSTM.keras")
 
 # --- PLOTTING & PREDICTION FUNCTION ---
-def plot_battery_soh(df, model, selected_battery, battery_col, date_col, selected_date):
+def plot_battery_soh(df, model, selected_battery, battery_col, start_time, selected_date):
     # 1. Filter data for the selected battery and date
     battery_df = df[df[battery_col] == selected_battery].copy()
     
     # Filter by selected date
-    battery_df = battery_df[battery_df[date_col].dt.date == selected_date]
+    battery_df = battery_df[battery_df[start_time].dt.date == selected_date]
     
     # Sort chronologically just in case
-    battery_df = battery_df.sort_values(by=date_col)
+    battery_df = battery_df.sort_values(by=start_time)
 
     window_size = 50 # 50 windows = 50 seconds
     
